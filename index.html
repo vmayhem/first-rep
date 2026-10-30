@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secret Santa</title>
+<style>
+  :root {
+    --bg: #fbf6ef;
+    --card: #ffffff;
+    --ink: #1d1d1d;
+    --muted: #555;
+    --red: #b3261e;
+    --red-dark: #8c1d17;
+    --green: #1e6b3a;
+    --line: #d9d2c7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 22px;
+    line-height: 1.45;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 8px 0 16px; text-align: center; }
+  h2 { font-size: 28px; margin: 0 0 8px; }
+  p { margin: 0 0 16px; }
+  .muted { color: var(--muted); }
+  .card {
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 18px;
+    padding: 24px 20px;
+    margin-bottom: 20px;
+  }
+  .center { text-align: center; }
+  .hidden { display: none !important; }
+
+  .lang { display: flex; justify-content: center; gap: 8px; margin-bottom: 8px; }
+  .lang button {
+    font-size: 18px; padding: 8px 16px; border-radius: 999px;
+    border: 2px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+  }
+  .lang button[aria-pressed="true"] { border-color: var(--ink); font-weight: 700; }
+
+  label { display: block; font-weight: 700; margin-bottom: 8px; }
+  input[type=text], textarea {
+    width: 100%; font: inherit; padding: 14px 16px;
+    border: 2px solid #9a9184; border-radius: 12px; background: #fff; color: var(--ink);
+  }
+  input[type=text]:focus, textarea:focus { outline: 3px solid var(--green); outline-offset: 1px; }
+  textarea { min-height: 90px; resize: vertical; }
+  .row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+  .row .num { width: 32px; text-align: right; color: var(--muted); flex: none; }
+  .row input { flex: 1; min-width: 0; }
+  .remove {
+    flex: none; width: 52px; height: 52px; font-size: 26px; line-height: 1;
+    border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--muted); cursor: pointer;
+  }
+
+  .btn {
+    display: block; width: 100%; font: inherit; font-weight: 700;
+    padding: 18px 20px; border-radius: 16px; border: none; cursor: pointer;
+    text-align: center; text-decoration: none;
+  }
+  .btn-big { font-size: 28px; padding: 26px 20px; }
+  .btn-red { background: var(--red); color: #fff; }
+  .btn-red:active { background: var(--red-dark); }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-plain { background: #fff; color: var(--ink); border: 2px solid #9a9184; }
+  .btn + .btn { margin-top: 12px; }
+
+  .error {
+    background: #fdecea; color: #7a1a14; border: 2px solid #e9a6a0;
+    border-radius: 12px; padding: 12px 16px; margin: 12px 0;
+  }
+
+  .person { border-top: 2px solid var(--line); padding: 18px 0; }
+  .person:first-of-type { border-top: none; padding-top: 4px; }
+  .person-name { font-size: 26px; font-weight: 700; margin-bottom: 10px; }
+  .person .btns { display: flex; gap: 10px; }
+  .person .btns .btn { margin: 0; font-size: 20px; padding: 14px 10px; }
+  .person.sent .person-name::after { content: "  ✓"; color: var(--green); }
+
+  .warn {
+    background: #fff6d6; border: 2px solid #e6cf7a; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 20px;
+  }
+
+  .reveal-name {
+    font-size: 54px; font-weight: 800; color: var(--red);
+    line-height: 1.1; margin: 8px 0 20px; word-break: break-word;
+  }
+  .big-emoji { font-size: 72px; line-height: 1; margin-bottom: 8px; }
+  .note {
+    background: #eef6f0; border: 2px solid #b5d6bf; border-radius: 12px;
+    padding: 14px 16px; text-align: left; margin-bottom: 20px; white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="lt">Lietuvių</button>
+    <button type="button" data-lang="en">English</button>
+  </div>
+
+  <!-- ===== Screen: organiser enters names ===== -->
+  <section id="setup" class="hidden">
+    <h1>🎅 <span data-t="title"></span></h1>
+    <div class="card">
+      <h2 data-t="whoTitle"></h2>
+      <p class="muted" data-t="whoHelp"></p>
+      <div id="names"></div>
+      <button type="button" class="btn btn-plain" id="add" data-t="add"></button>
+    </div>
+    <div class="card">
+      <label for="note" data-t="noteLabel"></label>
+      <textarea id="note" data-ph="notePh"></textarea>
+    </div>
+    <div id="setupError" class="error hidden" role="alert"></div>
+    <button type="button" class="btn btn-red btn-big" id="draw" data-t="draw"></button>
+  </section>
+
+  <!-- ===== Screen: organiser sends links ===== -->
+  <section id="links" class="hidden">
+    <h1>✅ <span data-t="doneTitle"></span></h1>
+    <p class="center" data-t="doneHelp"></p>
+    <div class="warn" data-t="dontPeek"></div>
+    <div class="card" id="linkList"></div>
+    <button type="button" class="btn btn-plain" id="restart" data-t="restart"></button>
+  </section>
+
+  <!-- ===== Screen: family member opens their link ===== -->
+  <section id="open" class="hidden">
+    <div class="card center">
+      <div class="big-emoji">🎁</div>
+      <h1 id="hello"></h1>
+      <p data-t="youAreSanta"></p>
+      <p><strong data-t="noPeeking"></strong></p>
+      <button type="button" class="btn btn-red btn-big" id="show" data-t="show"></button>
+    </div>
+  </section>
+
+  <section id="revealed" class="hidden">
+    <div class="card center">
+      <div class="big-emoji">🎄</div>
+      <p data-t="youDrew"></p>
+      <div class="reveal-name" id="recipient"></div>
+      <p data-t="buyGift"></p>
+      <div class="note hidden" id="noteShow"></div>
+      <p class="muted" data-t="comeBack"></p>
+      <button type="button" class="btn btn-plain" id="hide" data-t="hide"></button>
+    </div>
+  </section>
+
+  <section id="bad" class="hidden">
+    <div class="card center">
+      <div class="big-emoji">🤔</div>
+      <p data-t="badLink"></p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var TEXT = {
+    en: {
+      title: "Secret Santa",
+      whoTitle: "Who is taking part?",
+      whoHelp: "Write one name in each box.",
+      add: "+ Add another person",
+      remove: "Remove",
+      noteLabel: "Message for everyone (optional)",
+      notePh: "For example: Spend about €30. We swap gifts on 24 December.",
+      draw: "Draw the names",
+      errFew: "Please write at least 3 names.",
+      errSame: "Two people have the same name: {name}. Please add a letter so they are different.",
+      doneTitle: "The names are drawn!",
+      doneHelp: "Nobody can see who got whom — not even you. Now send each person their own link.",
+      dontPeek: "⚠️ Only press the buttons below. Don't open the links yourself — you would see someone else's secret.",
+      send: "Send",
+      copy: "Copy",
+      copied: "Copied ✓",
+      shareMsg: "Hi {name}! 🎅 This is your Secret Santa link. Tap it to see who you are buying a gift for. Keep it a secret!",
+      restart: "Start again with new names",
+      restartConfirm: "Start again? The links you already sent will still work, but they belong to the old draw.",
+      hello: "Hello, {name}!",
+      youAreSanta: "You are a Secret Santa this year.",
+      noPeeking: "Make sure nobody is looking at your screen, then press the big button.",
+      show: "Show me",
+      youDrew: "You are buying a gift for:",
+      buyGift: "Keep it a secret! 🤫",
+      comeBack: "If you forget, just open this link again.",
+      hide: "Hide it",
+      badLink: "This link doesn't work. Please ask for it to be sent again."
+    },
+    lt: {
+      title: "Slaptasis Kalėdų Senelis",
+      whoTitle: "Kas dalyvauja?",
+      whoHelp: "Kiekviename langelyje įrašykite po vieną vardą.",
+      add: "+ Pridėti dar vieną žmogų",
+      remove: "Pašalinti",
+      noteLabel: "Žinutė visiems (nebūtina)",
+      notePh: "Pavyzdžiui: dovana apie 30 €. Dovanomis keičiamės gruodžio 24 d.",
+      draw: "Traukti vardus",
+      errFew: "Įrašykite bent 3 vardus.",
+      errSame: "Du žmonės tuo pačiu vardu: {name}. Pridėkite raidę, kad vardai skirtųsi.",
+      doneTitle: "Vardai ištraukti!",
+      doneHelp: "Niekas nemato, kas ką ištraukė – net jūs. Dabar nusiųskite kiekvienam jo asmeninę nuorodą.",
+      dontPeek: "⚠️ Spauskite tik žemiau esančius mygtukus. Patys nuorodų neatidarykite – pamatytumėte kito žmogaus paslaptį.",
+      send: "Siųsti",
+      copy: "Kopijuoti",
+      copied: "Nukopijuota ✓",
+      shareMsg: "Sveiki, {name}! 🎅 Čia jūsų Slaptojo Kalėdų Senelio nuoroda. Paspauskite ją ir pamatysite, kam perkate dovaną. Tik niekam nesakykite!",
+      restart: "Pradėti iš naujo su naujais vardais",
+      restartConfirm: "Pradėti iš naujo? Jau išsiųstos nuorodos vis tiek veiks, bet jos priklausys senajam traukimui.",
+      hello: "Sveiki, {name}!",
+      youAreSanta: "Šiais metais jūs – Slaptasis Kalėdų Senelis.",
+      noPeeking: "Įsitikinkite, kad niekas nežiūri į jūsų ekraną, ir paspauskite didelį mygtuką.",
+      show: "Parodyti",
+      youDrew: "Jūs perkate dovaną šiam žmogui:",
+      buyGift: "Tai paslaptis – niekam nesakykite! 🤫",
+      comeBack: "Jei pamiršite – tiesiog vėl atidarykite šią nuorodą.",
+      hide: "Paslėpti",
+      badLink: "Ši nuoroda neveikia. Paprašykite, kad ją atsiųstų dar kartą."
+    }
+  };
+
+  var STORE_KEY = "secret-santa-v1";
+  var lang = pickLang();
+  var $ = function (id) { return document.getElementById(id); };
+
+  function pickLang() {
+    var nav = (navigator.language || "").toLowerCase();
+    return nav.indexOf("lt") === 0 ? "lt" : "en";
+  }
+  function t(key, vars) {
+    var s = TEXT[lang][key] || TEXT.en[key] || "";
+    if (vars) for (var k in vars) s = s.split("{" + k + "}").join(vars[k]);
+    return s;
+  }
+  function applyText() {
+    document.documentElement.lang = lang;
+    document.title = t("title");
+    document.querySelectorAll("[data-t]").forEach(function (el) { el.textContent = t(el.dataset.t); });
+    document.querySelectorAll("[data-ph]").forEach(function (el) { el.placeholder = t(el.dataset.ph); });
+    document.querySelectorAll(".lang button").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.dataset.lang === lang ? "true" : "false");
+    });
+    document.querySelectorAll(".remove").forEach(function (b) { b.setAttribute("aria-label", t("remove")); });
+  }
+  function show(id) {
+    ["setup", "links", "open", "revealed", "bad"].forEach(function (s) {
+      $(s).classList.toggle("hidden", s !== id);
+    });
+    window.scrollTo(0, 0);
+  }
+  function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; } catch (e) { return null; } }
+  function save(v) { try { localStorage.setItem(STORE_KEY, JSON.stringify(v)); } catch (e) {} }
+  function clearStore() { try { localStorage.removeItem(STORE_KEY); } catch (e) {} }
+
+  // ---- Link encoding: scrambled so a glance at the URL doesn't give the secret away ----
+  function encode(obj) {
+    var data = new TextEncoder().encode(JSON.stringify(obj));
+    var key = crypto.getRandomValues(new Uint8Array(8));
+    var out = new Uint8Array(key.length + data.length);
+    out.set(key);
+    for (var i = 0; i < data.length; i++) out[key.length + i] = data[i] ^ key[i % key.length] ^ ((i * 151) & 255);
+    var bin = "";
+    out.forEach(function (b) { bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function decode(str) {
+    var bin = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var key = bytes.slice(0, 8), data = new Uint8Array(bytes.length - 8);
+    for (var j = 0; j < data.length; j++) data[j] = bytes[8 + j] ^ key[j % 8] ^ ((j * 151) & 255);
+    return JSON.parse(new TextDecoder().decode(data));
+  }
+
+  // Sattolo's shuffle: a random single loop, so nobody ever draws themselves.
+  function drawPairs(names) {
+    var order = names.slice();
+    for (var i = order.length - 1; i > 0; i--) {
+      var r = new Uint32Array(1);
+      crypto.getRandomValues(r);
+      var j = r[0] % i;
+      var tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+    }
+    return order.map(function (giver, k) { return { g: giver, r: order[(k + 1) % order.length] }; });
+  }
+
+  function baseUrl() { return location.href.split("#")[0]; }
+
+  // ================= Organiser =================
+  function addNameRow(value) {
+    var wrap = $("names");
+    var row = document.createElement("div");
+    row.className = "row";
+    var num = document.createElement("span");
+    num.className = "num";
+    var input = document.createElement("input");
+    input.type = "text";
+    input.autocomplete = "off";
+    input.value = value || "";
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        var next = row.nextElementSibling;
+        if (next) next.querySelector("input").focus();
+        else { addNameRow(""); wrap.lastElementChild.querySelector("input").focus(); }
+      }
+    });
+    var rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "remove";
+    rm.textContent = "×";
+    rm.setAttribute("aria-label", t("remove"));
+    rm.addEventListener("click", function () {
+      if (wrap.children.length > 1) { row.remove(); renumber(); }
+      else input.value = "";
+    });
+    row.appendChild(num); row.appendChild(input); row.appendChild(rm);
+    wrap.appendChild(row);
+    renumber();
+  }
+  function renumber() {
+    Array.prototype.forEach.call($("names").children, function (row, i) {
+      row.querySelector(".num").textContent = (i + 1) + ".";
+    });
+  }
+
+  function onDraw() {
+    var err = $("setupError");
+    err.classList.add("hidden");
+    var names = Array.prototype.map.call($("names").querySelectorAll("input"), function (i) {
+      return i.value.trim().replace(/\s+/g, " ");
+    }).filter(Boolean);
+
+    var seen = {};
+    for (var i = 0; i < names.length; i++) {
+      var k = names[i].toLowerCase();
+      if (seen[k]) { err.textContent = t("errSame", { name: names[i] }); err.classList.remove("hidden"); return; }
+      seen[k] = true;
+    }
+    if (names.length < 3) { err.textContent = t("errFew"); err.classList.remove("hidden"); return; }
+
+    var note = $("note").value.trim();
+    var links = drawPairs(names).map(function (p) {
+      var payload = { g: p.g, r: p.r, l: lang };
+      if (note) payload.n = note;
+      return { name: p.g, url: baseUrl() + "#" + encode(payload), sent: false };
+    });
+    // Show the list in the order the names were typed, so it doesn't hint at the loop.
+    links.sort(function (a, b) { return names.indexOf(a.name) - names.indexOf(b.name); });
+    save({ links: links, names: names, note: note });
+    renderLinks(links);
+  }
+
+  function renderLinks(links) {
+    var list = $("linkList");
+    list.innerHTML = "";
+    links.forEach(function (item, idx) {
+      var div = document.createElement("div");
+      div.className = "person" + (item.sent ? " sent" : "");
+      var nm = document.createElement("div");
+      nm.className = "person-name";
+      nm.textContent = item.name;
+      var btns = document.createElement("div");
+      btns.className = "btns";
+
+      var message = t("shareMsg", { name: item.name });
+      function markSent() {
+        item.sent = true;
+        div.classList.add("sent");
+        var st = load();
+        if (st && st.links[idx]) { st.links[idx].sent = true; save(st); }
+      }
+
+      if (navigator.share) {
+        var send = document.createElement("button");
+        send.type = "button";
+        send.className = "btn btn-green";
+        send.textContent = "📤 " + t("send");
+        send.addEventListener("click", function () {
+          navigator.share({ text: message + "\n" + item.url }).then(markSent).catch(function () {});
+        });
+        btns.appendChild(send);
+      }
+      var copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "btn " + (navigator.share ? "btn-plain" : "btn-green");
+      copy.textContent = "📋 " + t("copy");
+      copy.addEventListener("click", function () {
+        copyText(message + "\n" + item.url).then(function () {
+          markSent();
+          copy.textContent = t("copied");
+          setTimeout(function () { copy.textContent = "📋 " + t("copy"); }, 2500);
+        });
+      });
+      btns.appendChild(copy);
+
+      div.appendChild(nm); div.appendChild(btns);
+      list.appendChild(div);
+    });
+    show("links");
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return fallbackCopy(text); });
+    }
+    return fallbackCopy(text);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    ta.remove();
+    return Promise.resolve();
+  }
+
+  function startSetup(names, note) {
+    $("names").innerHTML = "";
+    var list = names && names.length ? names : ["", "", ""];
+    list.forEach(function (n) { addNameRow(n); });
+    $("note").value = note || "";
+    show("setup");
+  }
+
+  // ================= Family member =================
+  function startRecipient(hash) {
+    var data;
+    try { data = decode(hash); } catch (e) { data = null; }
+    if (!data || !data.g || !data.r) { show("bad"); return; }
+    if (data.l && TEXT[data.l]) lang = data.l;
+    applyText();
+    $("hello").textContent = t("hello", { name: data.g });
+    $("recipient").textContent = data.r;
+    if (data.n) { $("noteShow").textContent = data.n; $("noteShow").classList.remove("hidden"); }
+    $("show").onclick = function () { show("revealed"); };
+    $("hide").onclick = function () { show("open"); };
+    show("open");
+  }
+
+  // ================= Wiring =================
+  var hash = location.hash.replace(/^#/, "");
+  var inRecipientMode = !!hash;
+
+  document.querySelectorAll(".lang button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      lang = b.dataset.lang;
+      applyText();
+      if (inRecipientMode) {
+        try { $("hello").textContent = t("hello", { name: decode(hash).g }); } catch (e) {}
+      } else if (!$("links").classList.contains("hidden")) {
+        var st = load(); if (st) renderLinks(st.links);
+      }
+    });
+  });
+  $("add").addEventListener("click", function () {
+    addNameRow("");
+    $("names").lastElementChild.querySelector("input").focus();
+  });
+  $("draw").addEventListener("click", onDraw);
+  $("restart").addEventListener("click", function () {
+    if (!confirm(t("restartConfirm"))) return;
+    var st = load();
+    clearStore();
+    startSetup(st && st.names, st && st.note);
+  });
+  window.addEventListener("hashchange", function () { location.reload(); });
+
+  applyText();
+  if (inRecipientMode) {
+    startRecipient(hash);
+  } else {
+    var st = load();
+    if (st && st.links && st.links.length) renderLinks(st.links);
+    else startSetup();
+  }
+})();
+</script>
+</body>
+</html>
