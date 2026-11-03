@@ -61,6 +61,13 @@
     border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--muted); cursor: pointer;
   }
 
+  .couple { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+  .couple select {
+    flex: 1; min-width: 0; font: inherit; font-size: 19px; padding: 12px 4px;
+    border: 2px solid #9a9184; border-radius: 12px; background: #fff; color: var(--ink);
+  }
+  .couple .amp { flex: none; font-size: 20px; color: var(--red); }
+
   .btn {
     display: block; width: 100%; font: inherit; font-weight: 700;
     padding: 18px 20px; border-radius: 16px; border: none; cursor: pointer;
@@ -116,6 +123,12 @@
       <p class="muted" data-t="whoHelp"></p>
       <div id="names"></div>
       <button type="button" class="btn btn-plain" id="add" data-t="add"></button>
+    </div>
+    <div class="card">
+      <h2>💑 <span data-t="couplesTitle"></span></h2>
+      <p class="muted" data-t="couplesHelp"></p>
+      <div id="couples"></div>
+      <button type="button" class="btn btn-plain" id="addCouple" data-t="addCouple"></button>
     </div>
     <div class="card">
       <label for="note" data-t="noteLabel"></label>
@@ -176,6 +189,12 @@
       whoHelp: "Write one name in each box.",
       add: "+ Add another person",
       remove: "Remove",
+      couplesTitle: "Couples (optional)",
+      couplesHelp: "Pick two people who should not draw each other.",
+      addCouple: "+ Add a couple",
+      choose: "— choose —",
+      errCouple: "For each couple, please choose two different people.",
+      errImpossible: "With these couples, there is no way to draw the names. Please remove a couple or add more people.",
       noteLabel: "Message for everyone (optional)",
       notePh: "For example: Spend about €30. We swap gifts on 24 December.",
       draw: "Draw the names",
@@ -206,6 +225,12 @@
       whoHelp: "Kiekviename langelyje įrašykite po vieną vardą.",
       add: "+ Pridėti dar vieną žmogų",
       remove: "Pašalinti",
+      couplesTitle: "Poros (nebūtina)",
+      couplesHelp: "Pasirinkite du žmones, kurie neturėtų ištraukti vienas kito.",
+      addCouple: "+ Pridėti porą",
+      choose: "– pasirinkite –",
+      errCouple: "Kiekvienai porai pasirinkite du skirtingus žmones.",
+      errImpossible: "Su tokiomis poromis vardų ištraukti neįmanoma. Pašalinkite porą arba pridėkite daugiau žmonių.",
       noteLabel: "Žinutė visiems (nebūtina)",
       notePh: "Pavyzdžiui: dovana apie 30 €. Dovanomis keičiamės gruodžio 24 d.",
       draw: "Traukti vardus",
@@ -285,16 +310,41 @@
     return JSON.parse(new TextDecoder().decode(data));
   }
 
-  // Sattolo's shuffle: a random single loop, so nobody ever draws themselves.
-  function drawPairs(names) {
-    var order = names.slice();
-    for (var i = order.length - 1; i > 0; i--) {
-      var r = new Uint32Array(1);
-      crypto.getRandomValues(r);
-      var j = r[0] % i;
-      var tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+  function randInt(n) {
+    var r = new Uint32Array(1);
+    crypto.getRandomValues(r);
+    return r[0] % n;
+  }
+  function shuffle(list, singleLoop) {
+    var a = list.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      // Sattolo's variant (j < i) makes one big loop, so nobody draws themselves.
+      var j = singleLoop ? randInt(i) : randInt(i + 1);
+      var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
     }
-    return order.map(function (giver, k) { return { g: giver, r: order[(k + 1) % order.length] }; });
+    return a;
+  }
+  // Returns [{g, r}] or null if the couples make a fair draw impossible.
+  function drawPairs(names, couples) {
+    var blocked = {};
+    couples.forEach(function (c) { blocked[c[0] + "\u0000" + c[1]] = blocked[c[1] + "\u0000" + c[0]] = true; });
+    function ok(pairs) {
+      return pairs.every(function (p) { return p.g !== p.r && !blocked[p.g + "\u0000" + p.r]; });
+    }
+    var tries;
+    // Prefer one big loop (nobody simply swaps gifts with each other).
+    for (tries = 0; tries < 20000; tries++) {
+      var order = shuffle(names, true);
+      var loop = order.map(function (giver, k) { return { g: giver, r: order[(k + 1) % order.length] }; });
+      if (ok(loop)) return loop;
+    }
+    // Fall back to any valid draw.
+    for (tries = 0; tries < 20000; tries++) {
+      var recv = shuffle(names, false);
+      var any = names.map(function (giver, k) { return { g: giver, r: recv[k] }; });
+      if (ok(any)) return any;
+    }
+    return null;
   }
 
   function baseUrl() { return location.href.split("#")[0]; }
@@ -326,6 +376,7 @@
     rm.addEventListener("click", function () {
       if (wrap.children.length > 1) { row.remove(); renumber(); }
       else input.value = "";
+      refreshCouples();
     });
     row.appendChild(num); row.appendChild(input); row.appendChild(rm);
     wrap.appendChild(row);
@@ -337,12 +388,52 @@
     });
   }
 
+  function cleanName(v) { return v.trim().replace(/\s+/g, " "); }
+  function currentNames() {
+    return Array.prototype.map.call($("names").querySelectorAll("input"), function (i) {
+      return cleanName(i.value);
+    }).filter(Boolean);
+  }
+  function addCoupleRow(a, b) {
+    var row = document.createElement("div");
+    row.className = "couple";
+    var s1 = document.createElement("select"), s2 = document.createElement("select");
+    s1.dataset.want = a || ""; s2.dataset.want = b || "";
+    [s1, s2].forEach(function (s) {
+      s.addEventListener("change", function () { s.dataset.want = s.value; });
+    });
+    var amp = document.createElement("span");
+    amp.className = "amp";
+    amp.textContent = "❤";
+    var rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "remove";
+    rm.textContent = "×";
+    rm.setAttribute("aria-label", t("remove"));
+    rm.addEventListener("click", function () { row.remove(); });
+    row.appendChild(s1); row.appendChild(amp); row.appendChild(s2); row.appendChild(rm);
+    $("couples").appendChild(row);
+    refreshCouples();
+  }
+  function refreshCouples() {
+    var names = currentNames();
+    $("couples").querySelectorAll("select").forEach(function (s) {
+      var want = s.dataset.want;
+      s.innerHTML = "";
+      [""].concat(names).forEach(function (n) {
+        var o = document.createElement("option");
+        o.value = n;
+        o.textContent = n || t("choose");
+        s.appendChild(o);
+      });
+      s.value = names.indexOf(want) >= 0 ? want : "";
+    });
+  }
+
   function onDraw() {
     var err = $("setupError");
     err.classList.add("hidden");
-    var names = Array.prototype.map.call($("names").querySelectorAll("input"), function (i) {
-      return i.value.trim().replace(/\s+/g, " ");
-    }).filter(Boolean);
+    var names = currentNames();
 
     var seen = {};
     for (var i = 0; i < names.length; i++) {
@@ -352,15 +443,27 @@
     }
     if (names.length < 3) { err.textContent = t("errFew"); err.classList.remove("hidden"); return; }
 
+    var couples = [];
+    var rows = $("couples").querySelectorAll(".couple");
+    for (var c = 0; c < rows.length; c++) {
+      var sel = rows[c].querySelectorAll("select"), a = sel[0].value, b = sel[1].value;
+      if (!a && !b) continue;
+      if (!a || !b || a === b) { err.textContent = t("errCouple"); err.classList.remove("hidden"); return; }
+      couples.push([a, b]);
+    }
+
+    var pairs = drawPairs(names, couples);
+    if (!pairs) { err.textContent = t("errImpossible"); err.classList.remove("hidden"); return; }
+
     var note = $("note").value.trim();
-    var links = drawPairs(names).map(function (p) {
+    var links = pairs.map(function (p) {
       var payload = { g: p.g, r: p.r, l: lang };
       if (note) payload.n = note;
       return { name: p.g, url: baseUrl() + "#" + encode(payload), sent: false };
     });
     // Show the list in the order the names were typed, so it doesn't hint at the loop.
     links.sort(function (a, b) { return names.indexOf(a.name) - names.indexOf(b.name); });
-    save({ links: links, names: names, note: note });
+    save({ links: links, names: names, couples: couples, note: note });
     renderLinks(links);
   }
 
@@ -430,10 +533,12 @@
     return Promise.resolve();
   }
 
-  function startSetup(names, note) {
+  function startSetup(names, note, couples) {
     $("names").innerHTML = "";
+    $("couples").innerHTML = "";
     var list = names && names.length ? names : ["", "", ""];
     list.forEach(function (n) { addNameRow(n); });
+    (couples || []).forEach(function (c) { addCoupleRow(c[0], c[1]); });
     $("note").value = note || "";
     show("setup");
   }
@@ -461,6 +566,7 @@
     b.addEventListener("click", function () {
       lang = b.dataset.lang;
       applyText();
+      refreshCouples();
       if (inRecipientMode) {
         try { $("hello").textContent = t("hello", { name: decode(hash).g }); } catch (e) {}
       } else if (!$("links").classList.contains("hidden")) {
@@ -472,12 +578,14 @@
     addNameRow("");
     $("names").lastElementChild.querySelector("input").focus();
   });
+  $("names").addEventListener("input", refreshCouples);
+  $("addCouple").addEventListener("click", function () { addCoupleRow(); });
   $("draw").addEventListener("click", onDraw);
   $("restart").addEventListener("click", function () {
     if (!confirm(t("restartConfirm"))) return;
     var st = load();
     clearStore();
-    startSetup(st && st.names, st && st.note);
+    startSetup(st && st.names, st && st.note, st && st.couples);
   });
   window.addEventListener("hashchange", function () { location.reload(); });
 
